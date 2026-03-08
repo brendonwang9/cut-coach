@@ -10,8 +10,9 @@ module.exports = {
   jefit: {
     userId: process.env.JEFIT_USER_ID || '10835027',
     baseUrl: 'https://www.jefit.com/api/v2',
-    // Session cookie from browser - refresh if expired
-    sessionCookie: process.env.JEFIT_SESSION_COOKIE || '',
+    // JWT tokens from browser cookies (DevTools → Application → Cookies → jefit.com)
+    accessToken: process.env.JEFIT_ACCESS_TOKEN || '',
+    refreshToken: process.env.JEFIT_REFRESH_TOKEN || '',
   },
 
   // Notion

@@ -101,6 +101,9 @@ async function main() {
   console.log(`  Range: ${flags.days} days back`);
   console.log('='.repeat(50));
 
+  // Show token expiry status so you know when to refresh
+  jefit.printTokenStatus();
+
   const startDate = daysAgo(flags.days);
   const endDate = new Date().toISOString().split('T')[0];
 
