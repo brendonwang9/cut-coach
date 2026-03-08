@@ -1,0 +1,18 @@
+{
+  "name": "cut-coach-sync",
+  "version": "1.0.0",
+  "description": "Sync JEFIT workouts and Google Sheets weight data to Notion for Cut Coach AI monitoring",
+  "main": "sync.js",
+  "scripts": {
+    "sync": "node sync.js",
+    "sync:week": "node sync.js --days 7",
+    "sync:month": "node sync.js --days 30",
+    "sync:backfill": "node sync.js --backfill",
+    "sync:workouts": "node sync.js --workouts-only",
+    "sync:weight": "node sync.js --weight-only"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.0",
+    "dotenv": "^16.6.1"
+  }
+}
