@@ -8,10 +8,15 @@ const config = require('./config');
 
 /**
  * Fetch weight data from Google Sheets
- * @param {string} range - Sheet range e.g. 'Weight!A:F'
+ * 
+ * Uses the "Weight" tab and fetches all rows from columns A-F.
+ * The Google Sheets API returns only rows that have data, so
+ * fetching A:F doesn't download empty rows — it's efficient.
+ * 
+ * @param {string} range - Sheet range (default: all data from Weight tab)
  * Returns array of { date, dailyWeight, weeklyAvg, weeklyChange, bodyFat, waist }
  */
-async function getWeightData(range = '2026!A1299:F1400') {
+async function getWeightData(range = 'Weight!A:F') {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheets.spreadsheetId}/values/${encodeURIComponent(range)}?key=${config.sheets.apiKey}`;
 
   const resp = await fetch(url);
@@ -40,12 +45,13 @@ async function getWeightData(range = '2026!A1299:F1400') {
 
 /**
  * Get recent weight data (last N days)
+ * 
+ * Fetches all weight data then returns only the last N entries.
+ * This is simple and reliable — the sheet has ~1400 rows which
+ * the API handles in under a second.
  */
 async function getRecentWeightData(days = 30) {
-  // Calculate the approximate row range based on the sheet structure
-  // The sheet starts at row 1299 for 2026-01-19
-  // We want the most recent data
-  const data = await getWeightData('2026!A1299:F1400');
+  const data = await getWeightData('Weight!A:F');
 
   if (days && data.length > days) {
     return data.slice(-days);
