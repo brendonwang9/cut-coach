@@ -142,22 +142,22 @@ async function upsertBodyMetric(metric) {
     'Daily Weight (kg)': { number: metric.dailyWeight },
   };
 
-  if (metric.weeklyAvg) properties['Weekly Average (kg)'] = { number: metric.weeklyAvg };
-  if (metric.weeklyChange) properties['Weekly Change (kg)'] = { number: metric.weeklyChange };
-  if (metric.bodyFat) properties['Est Body Fat %'] = { number: metric.bodyFat };
-  if (metric.waist) properties['Waist (cm)'] = { number: metric.waist };
-  if (metric.ratePct) properties['Rate (% BW/week)'] = { number: metric.ratePct };
-  if (metric.onTarget !== undefined) properties['On Target'] = { checkbox: metric.onTarget };
+  if (metric.weeklyAvg !== null && metric.weeklyAvg !== undefined) properties['Weekly Average (kg)'] = { number: metric.weeklyAvg };
+  if (metric.weeklyChange !== null && metric.weeklyChange !== undefined) properties['Weekly Change (kg)'] = { number: metric.weeklyChange };
+  if (metric.bodyFat !== null && metric.bodyFat !== undefined) properties['Est Body Fat %'] = { number: metric.bodyFat };
+  if (metric.waist !== null && metric.waist !== undefined) properties['Waist (cm)'] = { number: metric.waist };
+  if (metric.ratePct !== null && metric.ratePct !== undefined) properties['Rate (% BW/week)'] = { number: metric.ratePct };
+  if (metric.onTarget !== null && metric.onTarget !== undefined) properties['On Target'] = { checkbox: metric.onTarget };
 
   if (existing) {
     await notion.pages.update({ page_id: existing, properties });
-    console.log(`  ⚖️ Updated: ${metric.date} - ${metric.dailyWeight}kg`);
+    console.log(`  ⚖️ Updated: ${metric.date} - ${metric.dailyWeight}kg (avg: ${metric.weeklyAvg || '—'}kg, Δ: ${metric.weeklyChange || '—'}kg)`);
   } else {
     await notion.pages.create({
       parent: { database_id: config.notion.databases.bodyMetrics },
       properties,
     });
-    console.log(`  ⚖️ Created: ${metric.date} - ${metric.dailyWeight}kg`);
+    console.log(`  ⚖️ Created: ${metric.date} - ${metric.dailyWeight}kg (avg: ${metric.weeklyAvg || '—'}kg, Δ: ${metric.weeklyChange || '—'}kg)`);
   }
 }
 
