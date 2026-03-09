@@ -7,6 +7,38 @@
 const config = require('./config');
 
 /**
+ * Convert date strings to ISO format (YYYY-MM-DD)
+ * 
+ * Google Sheets stores dates in the locale format of the spreadsheet owner.
+ * Your sheet uses DD/MM/YYYY (Australian format), but Notion's API requires
+ * ISO 8601 format (YYYY-MM-DD). This function handles the conversion.
+ * 
+ * Examples:
+ *   "16/02/2025"  → "2025-02-16"  (DD/MM/YYYY)
+ *   "2025-02-16"  → "2025-02-16"  (already ISO, no change)
+ *   "2026-01-19"  → "2026-01-19"  (already ISO, no change)
+ */
+function normalizeDate(dateStr) {
+  if (!dateStr) return null;
+
+  // Already in YYYY-MM-DD format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+
+  // DD/MM/YYYY format → convert to YYYY-MM-DD
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
+    const [day, month, year] = dateStr.split('/');
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+
+  // MM/DD/YYYY format (US) — unlikely for you but handled for safety
+  // Can't reliably distinguish from DD/MM/YYYY, so we assume DD/MM/YYYY
+  // since your spreadsheet uses Australian locale
+
+  console.warn(`  ⚠️ Unrecognized date format: ${dateStr}`);
+  return dateStr;
+}
+
+/**
  * Fetch weight data from Google Sheets
  * 
  * Uses the "Weight" tab and fetches all rows from columns A-F.
@@ -34,7 +66,7 @@ async function getWeightData(range = 'Weight!A:F') {
   return dataRows
     .filter(row => row[0] && row[1]) // Must have date and weight
     .map(row => ({
-      date: row[0],                              // Column A: Date (YYYY-MM-DD)
+      date: normalizeDate(row[0]),                 // Column A: Date → converted to YYYY-MM-DD
       dailyWeight: parseFloat(row[1]) || null,    // Column B: Daily weight
       weeklyAvg: parseFloat(row[2]) || null,      // Column C: Weekly average
       weeklyChange: parseFloat(row[3]) || null,   // Column D: Weekly change
