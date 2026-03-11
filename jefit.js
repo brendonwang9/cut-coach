@@ -12,15 +12,15 @@
 //   1. Script tries an API call with the accessToken
 //   2. If it gets a 401 (expired), it calls JEFIT's auth endpoint
 //      with the refreshToken to get a fresh accessToken
-//   3. The new accessToken is saved to .env so it persists
+//   3. The new tokens are persisted:
+//      - On Railway: via Railway's GraphQL API (updates env vars on the service)
+//      - Locally: written back to the .env file
 //   4. The original API call is retried with the new token
 //
 // When the refreshToken itself expires (~3 months), you must:
 //   1. Log into jefit.com in your browser
 //   2. Copy fresh tokens from DevTools → Application → Cookies
-//   3. Update .env with the new values
-//
-// The script will warn you 7 days before the refreshToken expires.
+//   3. Update env vars (Railway dashboard or local .env)
 
 const fs = require('fs');
 const path = require('path');
@@ -134,28 +134,92 @@ async function refreshAccessToken() {
     // Response might not be JSON, that's fine
   }
 
-  // Save updated tokens back to .env so they persist between runs
-  // This is important: without this, you'd lose the refreshed token
-  // when the script exits, and the next run would use the old expired one
-  updateEnvFile();
+  // Persist tokens so the next run picks up the refreshed values
+  await persistTokens();
 
   return accessToken;
 }
 
 /**
- * Update the .env file with current token values
- * 
- * This writes the new tokens back to disk so the next time
- * the script runs, it picks up the refreshed tokens automatically.
- * Without this step, auto-refresh would only work within a single
- * script execution - the next run would start with stale tokens.
+ * Persist refreshed tokens so the next run picks them up.
+ *
+ * On Railway: calls the Railway GraphQL API to update the service's
+ * environment variables. This is necessary because Railway containers
+ * are ephemeral — there's no .env file to write to, and any filesystem
+ * changes are lost when the container shuts down.
+ *
+ * Locally: writes tokens back to the .env file (original behavior).
+ */
+async function persistTokens() {
+  if (config.railway.apiToken) {
+    await updateRailwayEnvVars();
+  } else {
+    updateEnvFile();
+  }
+}
+
+/**
+ * Update JEFIT tokens on Railway via the GraphQL API
+ */
+async function updateRailwayEnvVars() {
+  const { apiToken, serviceId, environmentId } = config.railway;
+
+  if (!serviceId || !environmentId) {
+    console.warn('  ⚠️ RAILWAY_SERVICE_ID or RAILWAY_ENVIRONMENT_ID missing, cannot persist tokens');
+    return;
+  }
+
+  const query = `
+    mutation($input: VariableCollectionUpsertInput!) {
+      variableCollectionUpsert(input: $input)
+    }
+  `;
+
+  const variables = {
+    input: {
+      serviceId,
+      environmentId,
+      variables: {
+        JEFIT_ACCESS_TOKEN: accessToken,
+        JEFIT_REFRESH_TOKEN: refreshToken,
+      },
+    },
+  };
+
+  try {
+    const resp = await fetch('https://backboard.railway.com/graphql/v2', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiToken}`,
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`Railway API returned ${resp.status}: ${text}`);
+    }
+
+    const data = await resp.json();
+    if (data.errors) {
+      throw new Error(data.errors.map(e => e.message).join(', '));
+    }
+
+    console.log('  💾 Updated Railway env vars with fresh tokens');
+  } catch (e) {
+    console.error('  ⚠️ Failed to update Railway env vars:', e.message);
+  }
+}
+
+/**
+ * Update the local .env file with current token values (for local dev)
  */
 function updateEnvFile() {
   const envPath = path.join(__dirname, '.env');
   try {
     let content = fs.readFileSync(envPath, 'utf8');
 
-    // Replace existing token values with new ones
     if (content.includes('JEFIT_ACCESS_TOKEN=')) {
       content = content.replace(
         /JEFIT_ACCESS_TOKEN=.*/,
@@ -172,7 +236,6 @@ function updateEnvFile() {
     fs.writeFileSync(envPath, content);
     console.log('  💾 Updated .env with fresh tokens');
   } catch (e) {
-    // .env might not exist (using system env vars instead)
     console.warn('  ⚠️ Could not update .env file:', e.message);
   }
 }

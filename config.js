@@ -32,6 +32,13 @@ module.exports = {
     apiKey: process.env.GOOGLE_SHEETS_API_KEY || '',
   },
 
+  // Railway (for persisting refreshed JEFIT tokens as env vars)
+  railway: {
+    apiToken: process.env.RAILWAY_API_TOKEN || '',
+    serviceId: process.env.RAILWAY_SERVICE_ID || '',
+    environmentId: process.env.RAILWAY_ENVIRONMENT_ID || '',
+  },
+
   // Sync settings
   sync: {
     // How many days back to backfill on first run
