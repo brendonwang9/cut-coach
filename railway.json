@@ -6,6 +6,6 @@
   "deploy": {
     "startCommand": "node sync.js",
     "restartPolicyType": "NEVER",
-    "cronSchedule": "12 3 * * *"
+    "cronSchedule": "30 22 * * *"
   }
 }
