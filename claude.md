@@ -30,16 +30,24 @@ Google Sheets (weight) ┘      ↑
                         Claude / Claude Code (reads/writes)
 ```
 
+### Deployment
+The sync script runs on **Railway** as a cron job. Auto-deploys from GitHub on push to `main`.
+
+- **Cron schedule**: `30 22 * * *` UTC = 9:30am AEDT daily
+- **Config**: `railway.json` (cron schedule, no-restart policy, Nixpacks builder)
+- **Env vars**: All credentials stored in Railway service variables (not `.env`)
+- **CI/CD**: Push to `main` → Railway auto-builds and deploys → cron fires on schedule
+
 ### Data Flow
-1. **Sync script** (this repo) runs daily, pulling from JEFIT API and Google Sheets
-2. Data lands in 4 Notion databases (see below)
-3. **OpenClaw** reads Notion on schedule, runs analysis, sends Telegram messages
+1. **Railway cron** triggers `node sync.js` daily at 9:30am AEDT
+2. Sync script pulls from JEFIT API and Google Sheets, writes to 4 Notion databases
+3. **OpenClaw** reads Notion on its own schedule, runs analysis, sends Telegram messages
 4. **Claude/Claude Code** can read and modify any part of the system
 
 ### Components
 | Component | Role | Location |
 |---|---|---|
-| Sync script | JEFIT + Sheets → Notion pipeline | This repo (`sync.js`) |
+| Sync script | JEFIT + Sheets → Notion pipeline | This repo (`sync.js`), deployed on Railway |
 | Notion databases | Central data hub | Brendon's Workspace → Cut Coach page |
 | OpenClaw | AI analysis + Telegram delivery | Local machine (scheduled jobs) |
 | Claude Code | Code changes, debugging, feature additions | This repo |
@@ -78,7 +86,8 @@ Undocumented internal REST API discovered via browser network analysis. User ID:
 Uses JWT tokens sent as cookies (`jefitAccessToken` and `jefitRefreshToken`).
 - Access token expires every ~7 days — **auto-refreshed by the script**
 - Refresh token expires every ~3 months — requires manual browser login to renew
-- The script writes refreshed tokens back to `.env` automatically
+- On Railway: refreshed tokens are persisted via Railway's GraphQL API (updates service env vars)
+- Locally: refreshed tokens are written back to `.env`
 
 ### Unit Conversion
 - `log_sets[].weight` is stored in **pounds** internally. Convert: `kg = lbs / 2.20462`
@@ -154,13 +163,14 @@ Three trigger conditions:
 
 ```
 cut-coach-sync/
-├── config.js            # Configuration (reads from .env)
-├── jefit.js             # JEFIT API client with JWT auto-refresh
+├── config.js            # Configuration (reads from env vars, with .env fallback locally)
+├── jefit.js             # JEFIT API client with JWT auto-refresh and Railway token persistence
 ├── sheets.js            # Google Sheets reader with date normalization and rolling average calculation
 ├── notion-sync.js       # Notion database writer (workouts, exercise logs, body metrics, alerts)
 ├── sync.js              # Main orchestrator — entry point for all sync operations
+├── railway.json         # Railway deployment config (cron schedule, no-restart, Nixpacks)
 ├── openclaw-config.md   # System prompts for OpenClaw weekly digest and daily alert jobs
-├── .env.example         # Template for credentials
+├── .env.example         # Template for credentials (local dev only)
 ├── .env                 # Actual credentials (gitignored, local only)
 ├── package.json         # Dependencies: @notionhq/client, dotenv
 ├── claude.md            # This file — project spec for AI tools
@@ -177,11 +187,13 @@ cut-coach-sync/
 
 4. **Idempotent sync**: All sync operations check for existing entries before creating. Running the same sync twice produces no duplicates. Workouts deduplicate on Session ID. Exercise Logs deduplicate on Exercise ID + Date. Body Metrics upsert on Date.
 
-5. **Token auto-refresh**: The JEFIT access token (7-day expiry) is automatically refreshed using the refresh token and written back to `.env`. The refresh token (3-month expiry) still requires manual browser login renewal.
+5. **Token auto-refresh**: The JEFIT access token (7-day expiry) is automatically refreshed using the refresh token. On Railway, refreshed tokens are persisted via Railway's GraphQL API (`variableCollectionUpsert` mutation). Locally, they're written back to `.env`. The refresh token (3-month expiry) still requires manual browser login renewal — update in Railway dashboard or local `.env`.
 
-6. **Date normalization**: Google Sheets uses DD/MM/YYYY (Australian locale). All dates are converted to ISO 8601 (YYYY-MM-DD) before writing to Notion.
+6. **Railway cron over local scheduling**: The sync runs as a Railway cron job rather than being triggered by OpenClaw. This decouples data sync from AI analysis and eliminates dependency on a local machine being online.
 
-7. **OpenClaw as analysis engine**: No separate analysis service. OpenClaw reads Notion databases directly and applies the decision frameworks via its system prompt. The Alerts database is an audit log, not a critical path.
+7. **Date normalization**: Google Sheets uses DD/MM/YYYY (Australian locale). All dates are converted to ISO 8601 (YYYY-MM-DD) before writing to Notion.
+
+8. **OpenClaw as analysis engine**: No separate analysis service. OpenClaw reads Notion databases directly and applies the decision frameworks via its system prompt. The Alerts database is an audit log, not a critical path.
 
 ## Common Tasks for AI Assistants
 
@@ -202,3 +214,29 @@ Check the JEFIT calendar endpoint for that date: `/api/v2/users/10835027/session
 
 ### "Check current token health"
 Run any sync command — token status prints at startup. Or decode the JWT in `.env` manually: the `exp` field is a Unix timestamp.
+
+### "Test Railway deployment locally"
+`railway run node sync.js --days 1` — runs the sync on your local machine using Railway's env vars. Useful for verifying credentials are set correctly without pushing/deploying.
+
+### "Force a token refresh test"
+Set a garbage `JEFIT_ACCESS_TOKEN` in Railway Variables to trigger a 401 → refresh → Railway API update cycle. Check logs to confirm `Updated Railway env vars with fresh tokens` appears.
+
+## Railway Environment Variables
+
+These are configured in the Railway dashboard (Settings → Variables):
+
+| Variable | Source | Notes |
+|---|---|---|
+| `JEFIT_ACCESS_TOKEN` | Browser cookies | Auto-refreshed by script every ~7 days |
+| `JEFIT_REFRESH_TOKEN` | Browser cookies | Manual renewal every ~3 months |
+| `JEFIT_USER_ID` | Static | `10835027` |
+| `NOTION_API_KEY` | Notion integrations page | Starts with `ntn_` |
+| `NOTION_WORKOUTS_DB` | Static | Database IDs from Notion |
+| `NOTION_EXERCISE_LOGS_DB` | Static | |
+| `NOTION_BODY_METRICS_DB` | Static | |
+| `NOTION_ALERTS_DB` | Static | |
+| `GOOGLE_SHEETS_API_KEY` | Google Cloud Console | |
+| `GOOGLE_SHEET_ID` | Static | |
+| `RAILWAY_API_TOKEN` | Railway Account Settings → Tokens | Used by script to persist refreshed JEFIT tokens |
+| `RAILWAY_SERVICE_ID` | Auto-provided by Railway | |
+| `RAILWAY_ENVIRONMENT_ID` | Auto-provided by Railway | |
